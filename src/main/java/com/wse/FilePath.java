@@ -12,6 +12,7 @@ public class FilePath {
     public static String WORD_LIST;
     public static String WORD_LIST_SORTED;
     public static String URL_TABLE;
+    public static String URL_TABLE_SORTED;
     public static String LOG_PATH;
     public FilePath() {
         Properties prop = new Properties();
@@ -27,7 +28,9 @@ public class FilePath {
             LEXICON = workspace + "/index/lexicon";
             INVERTED_INDEX = workspace + "/index/inverted_index";
             WORD_LIST = workspace + "/index/word_list";
+            WORD_LIST_SORTED = workspace + "/index/word_list_sorted";
             URL_TABLE = workspace + "/index/url_table";
+            URL_TABLE_SORTED = workspace + "/index/url_table_sorted";
         } catch (IOException ioe) {
             System.out.println(ioe.getMessage());
         }
