@@ -1,10 +1,7 @@
 package com.wse;
 
 import java.io.*;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
 
 /**
  * Created by chaoqunhuang on 10/27/17.
@@ -29,8 +26,9 @@ public class Query {
             System.out.println(ioe.getMessage());
         }
     }
+
     public String[] query(String word) throws IOException {
-        int wordId = getWordIdbyWord(word);
+        int wordId = getWordIdByWord(word);
         int[] urlIds = peakingFetch(this.lexicons, wordId);
         if (urlIds.length < 3) {
             String[] res = new String[urlIds.length];
@@ -43,10 +41,49 @@ public class Query {
 
             String[] res = new String[3];
             for (int i = 0; i < 3; i++) {
-                res[i] = getUrlByDocId(urlIds[i]);
+                String snippet = Snippet.generateSnippet(urlIds[i], word);
+                if (!"".equals(snippet)) {
+                    res[i] = getUrlByDocId(urlIds[i]) + "$$$" + snippet;
+                } else {
+                    res[i] = getUrlByDocId(urlIds[i]) + "$$$" + "No content find. The page probably changed";
+                }
             }
             return res;
         }
+    }
+
+    public String[] andQuery(String[] words) {
+        InvertedIndexPointer word1 = new InvertedIndexPointer(getLexiconByWordId(getWordIdByWord(words[0])));
+        InvertedIndexPointer word2 = new InvertedIndexPointer(getLexiconByWordId(getWordIdByWord(words[1])));
+        int word1Min = word1.readBlockMeta();
+        int word2Min = word2.readBlockMeta();
+        Map<Integer, Integer> word1DocFre;
+        Map<Integer, Integer> word2DocFre;
+        int flag;
+        if (word1Min > word2Min && word1Min > (word2Min - 128)) {
+            while ((flag = word1.readNextBlockMeta()) > word2Min && flag != -1) {
+            }
+            word1DocFre = word1.getRemainingDocFre();
+            word2DocFre = word2.getRemainingDocFre();
+
+        } else if (word1Min < word2Min && word1Min < (word2Min - 128)) {
+            while ((flag = word2.readNextBlockMeta()) > word1Min && flag != -1) {
+            }
+            word1DocFre = word1.getRemainingDocFre();
+            word2DocFre = word2.getRemainingDocFre();
+        } else {
+            word1DocFre = word1.getRemainingDocFre();
+            word2DocFre = word2.getRemainingDocFre();
+        }
+
+        List<String> urls = new ArrayList<>();
+        for (Integer i : word1DocFre.keySet()) {
+            if (word2DocFre.containsKey(i)) {
+                System.out.println("Matching:" + i);
+                urls.add(getUrlByDocId(i));
+            }
+        }
+        return urls.toArray(new String[urls.size()]);
     }
 
     private Lexicon[] loadingLexicon(String fileName) throws IOException {
@@ -89,7 +126,7 @@ public class Query {
         return urls.toArray(new Url[urls.size()]);
     }
 
-    private int getWordIdbyWord(String word) {
+    private int getWordIdByWord(String word) {
         Comparator<WordList> c = new Comparator<WordList>() {
             public int compare(WordList w1, WordList w2) {
                 return w1.getWord().compareTo(w2.getWord());
@@ -111,6 +148,15 @@ public class Query {
         return urls[res].getUrl();
     }
 
+    private Lexicon getLexiconByWordId(int wordId) {
+        Comparator<Lexicon> c = new Comparator<Lexicon>() {
+            public int compare(Lexicon l1, Lexicon l2) {
+                return l1.getWordId() - l2.getWordId();
+            }
+        };
+        int res = Arrays.binarySearch(this.lexicons, new Lexicon(wordId, 0, 0 ,0), c);
+        return this.lexicons[res];
+    }
 
     private int[] peakingFetch(Lexicon[] lexicons, int wordId) throws IOException{
         Comparator<Lexicon> c = new Comparator<Lexicon>() {
