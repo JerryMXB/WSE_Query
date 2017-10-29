@@ -10,6 +10,7 @@ public class Query {
     private Lexicon[] lexicons;
     private WordList[] wordLists;
     private Url[] urls;
+    private double dAvg;
     public Query()  {
         try {
             FilePath filePath = new FilePath();
@@ -22,68 +23,137 @@ public class Query {
 
             this.urls = loadingUrlList(FilePath.URL_TABLE_SORTED);
             System.out.println("Loading urlList successfully");
+
+            this.dAvg = documentAvg();
+            System.out.println("The Document avarage length is:" + this.dAvg);
         } catch (IOException ioe) {
             System.out.println(ioe.getMessage());
         }
     }
 
-    public String[] query(String word) throws IOException {
-        int wordId = getWordIdByWord(word);
-        int[] urlIds = peakingFetch(this.lexicons, wordId);
-        if (urlIds.length < 3) {
-            String[] res = new String[urlIds.length];
-            for (int i = 0; i < urlIds.length; i++) {
-                res[i] = getUrlByDocId(urlIds[i]);
-            }
-            return res;
-        } else {
-            // Should rank here
 
-            String[] res = new String[3];
-            for (int i = 0; i < 3; i++) {
-                String snippet = Snippet.generateSnippet(urlIds[i], word);
-                if (!"".equals(snippet)) {
-                    res[i] = getUrlByDocId(urlIds[i]) + "$$$" + snippet;
-                } else {
-                    res[i] = getUrlByDocId(urlIds[i]) + "$$$" + "No content find. The page probably changed";
-                }
-            }
-            return res;
+    public String[] query(String word) throws IOException {
+        if (getWordIdByWord(word) ==  -1) {
+            return new String[3];
         }
+        InvertedIndexPointer word1 = new InvertedIndexPointer(getLexiconByWordId(getWordIdByWord(word)));
+        Map<Integer, Integer> word1DocFre;
+        int word1Min = word1.readBlockMeta();
+        word1DocFre = word1.getRemainingDocFre();
+        PriorityQueue<Url> queryResults = new PriorityQueue<>();
+        for (Integer i : word1DocFre.keySet()) {
+            Url u = new Url(i, getUrlByDocId(i), getUrlLengthByDocId(i));
+            u.setScore(Ranking.calculateBM25(u, getLexiconByWordId((getWordIdByWord(word))).getCount(), word1DocFre.get(i),
+                    dAvg, urls.length));
+            queryResults.add(u);
+        }
+        Url[] urls= new Url[]{queryResults.poll(), queryResults.poll(), queryResults.poll(),
+                queryResults.poll(), queryResults.poll(), queryResults.poll()};
+
+        return generateSnippets(urls, new String[]{word});
     }
 
     public String[] andQuery(String[] words) {
-        InvertedIndexPointer word1 = new InvertedIndexPointer(getLexiconByWordId(getWordIdByWord(words[0])));
-        InvertedIndexPointer word2 = new InvertedIndexPointer(getLexiconByWordId(getWordIdByWord(words[1])));
-        int word1Min = word1.readBlockMeta();
-        int word2Min = word2.readBlockMeta();
-        Map<Integer, Integer> word1DocFre;
-        Map<Integer, Integer> word2DocFre;
-        int flag;
-        if (word1Min > word2Min && word1Min > (word2Min - 128)) {
-            while ((flag = word1.readNextBlockMeta()) > word2Min && flag != -1) {
-            }
-            word1DocFre = word1.getRemainingDocFre();
-            word2DocFre = word2.getRemainingDocFre();
-
-        } else if (word1Min < word2Min && word1Min < (word2Min - 128)) {
-            while ((flag = word2.readNextBlockMeta()) > word1Min && flag != -1) {
-            }
-            word1DocFre = word1.getRemainingDocFre();
-            word2DocFre = word2.getRemainingDocFre();
-        } else {
-            word1DocFre = word1.getRemainingDocFre();
-            word2DocFre = word2.getRemainingDocFre();
+        String[] res = new String[3];
+        InvertedIndexPointer[] invertedIndexPointers = new InvertedIndexPointer[words.length];
+        int start = 0;
+        int min = 0;
+        for (int i=0; i < words.length; i++) {
+            invertedIndexPointers[i] = new InvertedIndexPointer(getLexiconByWordId(getWordIdByWord(words[i])));
+            invertedIndexPointers[i].readBlockMeta();
+            start = invertedIndexPointers[i].getStartDocId() > start ? invertedIndexPointers[i].getStartDocId() : start;
         }
-
+        Map<Integer, Integer>[] invertedIndexList = new Map[words.length];
+        Map<Integer, Integer>[] invertedIndexResult = new Map[words.length];
+        for (int i=0; i < words.length; i++) {
+            invertedIndexList[i] = invertedIndexPointers[i].getGEQ(start);
+            min = invertedIndexList[i].size() < min ? i : min;
+        }
         List<String> urls = new ArrayList<>();
-        for (Integer i : word1DocFre.keySet()) {
-            if (word2DocFre.containsKey(i)) {
-                System.out.println("Matching:" + i);
-                urls.add(getUrlByDocId(i));
+        for (Integer i : invertedIndexList[min].keySet()) {
+            int flag = 0;
+            for (int j = 0; j < words.length; j++) {
+                if (j == min) {
+                    flag++;
+                    continue;
+                }
+                if (invertedIndexList[j].containsKey(i)) {
+                    flag++;
+                }
+            }
+            if (flag == words.length) {
+                for (int h = 0; h < words.length; h++) {
+                    invertedIndexResult[h].put(i, invertedIndexList[h].get(i));
+                }
             }
         }
-        return urls.toArray(new String[urls.size()]);
+        PriorityQueue<Url> queryResults = new PriorityQueue<>();
+
+        for (Integer i : invertedIndexResult[0].keySet()) {
+            for (int j = 0; j < words.length; j++) {
+                Url u = new Url(i, getUrlByDocId(i), getUrlLengthByDocId(i));
+                u.setScore(u.getScore() + Ranking.calculateBM25(u, getLexiconByWordId((getWordIdByWord(words[j]))).getCount(), invertedIndexResult[j].get(i),
+                        dAvg, this.urls.length));
+                queryResults.add(u);
+            }
+        }
+        Url[] results= new Url[]{queryResults.poll(), queryResults.poll(), queryResults.poll(),
+                queryResults.poll(), queryResults.poll(), queryResults.poll()};
+        System.out.println("There are :" + results.length + " results.");
+        return generateSnippets(results, words);
+    }
+
+    public String[] orQuery(String[] words) {
+        String[] res = new String[3];
+        Map<Integer, Integer> word1DocFre = new HashMap<>();
+        Map<Integer, Integer>[] invertedIndexList = new Map[words.length];
+        InvertedIndexPointer[] invertedIndexPointers = new InvertedIndexPointer[words.length];
+
+        for (int i=0; i < words.length; i++) {
+            try {
+                invertedIndexPointers[i] = new InvertedIndexPointer(getLexiconByWordId(getWordIdByWord(words[i])));
+            } catch (Exception e) {
+                invertedIndexPointers[i] = null;
+                continue;
+            }
+            invertedIndexPointers[i].readBlockMeta();
+        }
+
+        PriorityQueue<Url> queryResults = new PriorityQueue<>();
+
+        for (int i=0; i < words.length; i++) {
+            if (invertedIndexPointers[i] != null) {
+                invertedIndexList[i] = invertedIndexPointers[i].getRemainingDocFre();
+                for (Integer j : invertedIndexList[i].keySet()) {
+                    Url u = new Url(j, getUrlByDocId(j), getUrlLengthByDocId(j));
+                    u.setScore(u.getScore() + Ranking.calculateBM25(u, getLexiconByWordId((getWordIdByWord(words[i]))).getCount(), invertedIndexList[i].get(j),
+                            dAvg, this.urls.length));
+                    queryResults.add(u);
+                }
+            }
+        }
+
+        Url[] results= new Url[]{queryResults.poll(), queryResults.poll(), queryResults.poll(),
+                queryResults.poll(), queryResults.poll(), queryResults.poll()};
+        System.out.println("There are :" + results.length + " results.");
+        return generateSnippets(results, words);
+    }
+
+    private String[] generateSnippets(Url[] urls, String[] words) {
+        String[] res = new String[3];
+        int count = 0;
+        for (int i = 0; i < urls.length; i++) {
+            if (count == 3) break;
+            if (urls[i] != null) {
+                String snippet = Snippet.generateSnippet(urls[i].getDocId(), words[0]);
+                if (!"".equals(snippet)) {
+                    res[count] = getUrlByDocId(urls[i].getDocId()) + "$$$" + snippet + "$$$" + urls[i].getScore();
+                    System.out.println(urls[i].getUrl() + " " + urls[i].getScore());
+                    count++;
+                }
+            }
+        }
+        return res;
     }
 
     private Lexicon[] loadingLexicon(String fileName) throws IOException {
@@ -100,7 +170,7 @@ public class Query {
         return lexicons.toArray(new Lexicon[lexicons.size()]);
     }
 
-    private WordList[] loadingWordList(String fileName) throws IOException{
+    private WordList[] loadingWordList(String fileName) throws IOException {
         FileInputStream fileInputStream = new FileInputStream(fileName);
         BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(fileInputStream));
         List<WordList> wordLists = new ArrayList<>();
@@ -113,14 +183,14 @@ public class Query {
         return wordLists.toArray(new WordList[wordLists.size()]);
     }
 
-    private Url[] loadingUrlList(String fileName) throws IOException{
+    private Url[] loadingUrlList(String fileName) throws IOException {
         FileInputStream fileInputStream = new FileInputStream(fileName);
         BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(fileInputStream));
         List<Url> urls = new ArrayList<>();
         String buffer;
         while((buffer = bufferedReader.readLine()) != null) {
             String[] params = buffer.split(" ");
-            urls.add(new Url(Integer.valueOf(params[0]), params[1]));
+            urls.add(new Url(Integer.valueOf(params[0]), params[1], Integer.valueOf(params[2])));
         }
         bufferedReader.close();
         return urls.toArray(new Url[urls.size()]);
@@ -134,6 +204,9 @@ public class Query {
         };
 
         int res = Arrays.binarySearch(wordLists, new WordList(word,0), c);
+        if (res < 0) {
+            return -1;
+        }
         return wordLists[res].getWordId();
     }
 
@@ -144,8 +217,19 @@ public class Query {
             }
         };
 
-        int res = Arrays.binarySearch(urls, new Url(docId, ""), c);
+        int res = Arrays.binarySearch(urls, new Url(docId, "", 0), c);
         return urls[res].getUrl();
+    }
+
+    private int getUrlLengthByDocId(int docId) {
+        Comparator<Url> c = new Comparator<Url>() {
+            public int compare(Url u1, Url u2) {
+                return u1.getDocId() - u2.getDocId();
+            }
+        };
+
+        int res = Arrays.binarySearch(urls, new Url(docId, "", 0), c);
+        return urls[res].getLength();
     }
 
     private Lexicon getLexiconByWordId(int wordId) {
@@ -192,5 +276,11 @@ public class Query {
         return result;
     }
 
-
+    private double documentAvg() {
+        double sum = 0d;
+        for(Url u: this.urls) {
+            sum += u.getLength();
+        }
+        return sum / this.urls.length;
+    }
 }

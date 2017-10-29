@@ -3,7 +3,6 @@ package com.wse;
 import com.mongodb.MongoClient;
 import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
-import io.vertx.core.json.Json;
 import io.vertx.core.json.JsonObject;
 import org.bson.Document;
 

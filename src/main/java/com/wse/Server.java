@@ -18,27 +18,42 @@ public class Server extends AbstractVerticle {
             String word = request.getParam("word");
             System.out.println("Searching word:" + word);
             StringBuilder sb = new StringBuilder();
-            if (!word.contains("#") && !word.contains("$")) {
-                try {
-                    String[] docs = query.query(word);
+            //try {
+                if (!word.contains("@") && !word.contains("$")) {
+                    // One word query
+                    try {
+                        String[] docs = query.query(word);
+                        for (String s : docs) {
+                            sb.append(s);
+                            sb.append("###");
+                        }
+                    } catch (IOException ioe) {
+                        System.out.println(ioe.getMessage());
+                    }
+                } else if (word.contains("$")) {
+                    // And word query
+                    String[] words = word.split("\\$");
+                    System.out.println(words[0] + " " + words[1]);
+                    String[] docs = query.andQuery(words);
+                    System.out.println(docs[0] + docs[1]);
                     for (String s : docs) {
                         sb.append(s);
                         sb.append("###");
                     }
-                } catch (IOException ioe) {
-                    System.out.println(ioe.getMessage());
+                } else {
+                    String[] words = word.split("@");
+                    System.out.println(words[0] + " " + words[1]);
+                    String[] docs = query.orQuery(words);
+                    System.out.println(docs[0] + docs[1]);
+                    for (String s : docs) {
+                        sb.append(s);
+                        sb.append("###");
+                    }
                 }
-            } else if (word.contains("#")) {
-                String[] words = word.split("#");
-                System.out.println(words[0] + " " +words[1]);
-                String[] docs = query.andQuery(words);
-                System.out.println(docs[0] + docs[1]);
-                for (String s : docs) {
-                    sb.append(s);
-                    sb.append("###");
-                }
-            } else {
-            }
+//            } catch (Exception e) {
+//                System.out.println(e.getMessage());
+//                sb.append("");
+//            }
             response.putHeader("content-type", "text/plain");
             response.putHeader("Access-Control-Allow-Origin", "*");
 

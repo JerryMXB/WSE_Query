@@ -1,18 +1,17 @@
 package com.wse;
 
+import java.io.IOException;
+
 /**
  * Created by chaoqunhuang on 10/28/17.
  */
 public class test {
     public static void main(String[] args) {
         Query query = new Query();
-        String[] words = new String[] {"Tandon", "School"};
+        String[] words = new String[] {"guilty", "cat", "dog"};
         String[] docs = query.andQuery(words);
-        StringBuffer sb = new StringBuffer();
-        for (String s : docs) {
-            sb.append(s);
-            sb.append(' ');
+        for(String s : docs) {
+            System.out.println(s);
         }
-        System.out.println(sb.toString());
     }
 }

@@ -12,7 +12,7 @@ import java.util.Map;
  */
 public class InvertedIndexPointer {
     private DataInputStream dataInputStream;
-    private int curP;
+    private int startDocId;
     private int lastDocId;
     private int blockNum;
     private int numsBlk;
@@ -33,16 +33,36 @@ public class InvertedIndexPointer {
         }
     }
 
+    public int getLastDocId() {
+        return lastDocId;
+    }
+
+    public int getStartDocId() {
+        return startDocId;
+    }
+
+    public Map<Integer, Integer> getGEQ(int docId) {
+
+        while (this.getLastDocId() < docId) {
+            System.out.println("Jumping block");
+            if (readNextBlockMeta() == -1) {
+                break;
+            }
+            System.out.println(this.lastDocId);
+        }
+        return getRemainingDocFre();
+    }
+
     public int readBlockMeta() {
         try {
             this.numsBlk = dataInputStream.readInt();
-            int startBlk = dataInputStream.readInt();
-            int endBlk = dataInputStream.readInt();
+            this.startDocId = dataInputStream.readInt();
+            this.lastDocId = dataInputStream.readInt();
             this.docLength = dataInputStream.readInt();
             this.freLength = dataInputStream.readInt();
             this.jumpLength = this.docLength + this.freLength;
             this.blockNum -= 1;
-            return endBlk;
+            return this.lastDocId;
         } catch (IOException ioe) {
             System.out.println(ioe.getMessage());
             throw new RuntimeException("Reading meta error");
@@ -56,13 +76,13 @@ public class InvertedIndexPointer {
             }
             this.dataInputStream.skipBytes(this.jumpLength);
             this.numsBlk = dataInputStream.readInt();
-            int startBlk = dataInputStream.readInt();
-            int endBlk = dataInputStream.readInt();
+            this.startDocId = dataInputStream.readInt();
+            this.lastDocId = dataInputStream.readInt();
             this.docLength = dataInputStream.readInt();
             this.freLength = dataInputStream.readInt();
             this.jumpLength = this.docLength + this.freLength;
             this.blockNum -= 1;
-            return endBlk;
+            return this.lastDocId;
         } catch (IOException ioe) {
             System.out.println(ioe.getMessage());
             throw new RuntimeException("Reading meta error");
